@@ -1,0 +1,300 @@
+sigo sin poder finalizar la compra.
+así son los archivos:
+shopping_app: 
+import readline
+from seller import Seller
+from customer import Customer
+from item import Item
+from tabulate import tabulate
+
+def initialize_products(seller):
+    products = [
+        ("CPU", 40830),
+        ("Memoria RAM", 13880),
+        ("Placa madre", 28980),
+        ("Unidad de fuente de alimentación", 8980),
+        ("Carcasa de PC", 8727),
+        ("Disco duro de 3.5 pulgadas", 10980),
+        ("SSD de 2.5 pulgadas", 13370),
+        ("SSD M.2", 12980),
+        ("Refrigeración para CPU", 13400),
+        ("Tarjeta gráfica", 23800)
+    ]
+
+    for idx, (product_name, price) in enumerate(products):
+        item = Item(product_name, price, seller)
+        seller.stock.append({
+            "number": idx,
+            "label": item.label(),
+            "items": [item] * 10  # Inicialmente 10 unidades de cada producto
+        })
+
+seller = Seller("DIC Store")
+initialize_products(seller)
+
+print("🤖 Por favor, introduce tu nombre")
+customer = Customer(input())
+
+amount_to_deposit = None
+while amount_to_deposit is None:
+    try:
+        print("🏧 Por favor, introduce la cantidad que deseas cargar en tu billetera")
+        amount_input = input().strip()
+        
+        # Limpiar la entrada de caracteres no deseados antes de convertir a entero
+        amount_cleaned = ''.join(filter(str.isdigit, amount_input))
+        
+        amount_to_deposit = int(amount_cleaned)
+    except ValueError:
+        print("Cantidad inválida. Introduce un número entero válido.")
+
+customer.wallet.deposit(amount_to_deposit)
+
+print("🛍️ Comienza la compra")
+end_shopping = False
+while not end_shopping:
+    seller.show_items()  # Mostrar los productos disponibles del vendedor
+
+    print("️️⛏ Por favor, introduce el número del producto")
+    number = None
+    while number is None:
+        try:
+            number_input = input().strip()
+            number_cleaned = ''.join(filter(str.isdigit, number_input))
+            number = int(number_cleaned)
+        except ValueError:
+            print("Número de producto inválido. Introduce un número entero válido.")
+
+    print("⛏ Introduce la cantidad que deseas")
+    quantity = None
+    while quantity is None:
+        try:
+            quantity_input = input().strip()
+            quantity_cleaned = ''.join(filter(str.isdigit, quantity_input))
+            quantity = int(quantity_cleaned)
+        except ValueError:
+            print("Cantidad inválida. Introduce un número entero válido.")
+
+    # Obtener los artículos del vendedor
+    items = seller.pick_items(number, quantity)
+
+    if items is None:
+        print("Lo sentimos, no hay suficientes existencias de este producto.")
+        continue
+
+    # Agregar los artículos al carrito del cliente
+    for item in items:
+        item.quantity = quantity  # Establecer la cantidad seleccionada en el artículo
+        customer.cart.add(item)
+
+    print("🛒 Contenido del carrito")
+    customer.cart.show_items()
+    print(f"🤑 Total a pagar: {customer.cart.total_amount()}")
+
+    print("😭 ¿Deseas finalizar la compra? (sí/no)")
+    end_shopping = input() == "sí"
+
+    if end_shopping:
+        print("💸 ¿Deseas confirmar la compra? (sí/no)")
+        if input() == "sí":
+            if customer.cart.check_out():
+                print("୨୧┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈ Resultado ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈୨୧")
+                print(f"️🛍️ Propiedad de {customer.name}")
+                customer.show_items()
+                print(f"😱👛 Saldo en la billetera de {customer.name}: {customer.wallet.balance}")
+
+                print(f"📦 Disponibilidad de la tienda {seller.name}")
+                seller.show_items()
+
+                print("🛒 Contenido del carrito")
+                customer.cart.show_items()
+                print(f"🌚 Total a pagar: {customer.cart.total_amount()}")
+
+                customer.cart.empty_cart()  # Vaciar el carrito después de confirmar la compra
+
+                print("😭 Gracias por tu compra!")
+                break  # Salir del bucle principal después de confirmar la compra
+            else:
+                print("No se pudo completar la compra. Saldo insuficiente.")
+
+print("🎉 Fin del programa")
+
+seller.py:
+from user import User
+from tabulate import tabulate
+
+class Seller(User):
+    def __init__(self, name):
+        super().__init__(name)
+        self.stock = []  # Inicializar una lista para el stock del vendedor
+
+    def pick_items(self, number, quantity):
+        items = self._find_items_by_number(number)
+        if not items or len(items["items"]) < quantity:
+            return None  # No hay suficientes existencias del producto
+        else:
+            picked_items = items["items"][:quantity]
+            for item in picked_items:
+                self.stock[number]["items"].remove(item)
+            return picked_items
+
+    def show_items(self):
+       table_data = []  
+       for stock_item in self.stock:  
+         table_data.append([f"#{stock_item['number']}", stock_item['label']['name'], stock_item['label']['price'], len(stock_item['items'])])
+       print(tabulate(table_data, headers=["Número", "Nombre del producto", "Precio", "Cantidad"], tablefmt="grid"))
+
+    def items_list(self):
+        return self.stock
+
+    def _find_items_by_number(self, number):
+        return next((item for item in self.stock if item["number"] == number), None)
+
+cart.py:
+from ownable import set_owner
+
+class Cart:
+    def __init__(self, owner):
+        self.owner = owner
+        self.items = []
+
+    def items_list(self):
+        return self.items
+
+    def add(self, item):
+        self.items.append(item)
+
+    def total_amount(self):
+        price_list = []
+        for item in self.items:
+            price_list.append(item.price)
+        return sum(price_list)
+
+    def check_out(self):
+        if self.owner.wallet.balance < self.total_amount():
+            return False
+        
+        for item in self.items:
+            item.owner.wallet.deposit(item.price)
+            set_owner(item, self.owner)  # Establecer propietario del artículo al propietario del carrito
+        
+        self.items.clear()  # Vaciar el carrito después de la compra
+        return True
+
+    def show_items(self):
+        if not self.items:
+            print("El carrito está vacío.")
+        else:
+            for item in self.items:
+                print(f"{item.quantity} {item.name} precio: {item.price}")
+
+    def empty_cart(self):
+        self.items.clear()
+
+customer.py:
+from user import User
+from cart import Cart
+
+class Customer(User):
+    def __init__(self, name):
+        super().__init__(name)
+        self.cart = Cart(self)
+
+    def show_items(self):
+        # Mostrar los items en el carrito
+        self.cart.show_items()
+
+item_manager.py:
+from item import Item
+from tabulate import tabulate
+from itertools import groupby
+
+def items_list(self):   # 自身の所有する（自身がオーナーとなっている）全てのItemインスタンスを返します。
+    items = [item for item in Item.item_all() if item.owner == self]
+    return items
+
+# item_manager.py
+
+def pick_items(self, number, quantity):
+    items = filter(lambda num: num["number"] == number, self._stock(self))
+    items = list(items)
+    if len(items) == 0:
+        return []
+    elif len(items[0]["items"]) < quantity:
+        return []
+    else:
+        return items[0]["items"][:quantity]
+
+
+def show_items(self):   # 自身の所有するItemインスタンスの在庫状況を、["番号", "商品名", "金額", "数量"]という列でテーブル形式にして出力します。
+    table_data = []
+    for stock in _stock(self):
+        table_data.append([stock['number'], stock['label']['name'], stock['label']['price'], len(stock['items'])])
+    print(tabulate(table_data, headers=["番号", "商品名", "金額", "数量"], tablefmt="grid"))    # tabulateモジュールを使ってテーブル形式で結果を出力
+
+def _stock(self):   # 自身の所有するItemインスタンスの在庫状況を返します。
+    item_ls = self.items_list()
+    item_ls.sort(key=lambda m: m.name)
+    group_list = []
+    for key, group in groupby(item_ls, key=lambda m: m.name):   # Item#nameで同じ値を返すItemインスタンスで分類します。
+        group_list.append(list(group))
+    stock = []
+    for index, item in enumerate(group_list):
+        stock.append({"number": index, "label": {"name": item[0].name, "price": item[0].price}, "items": item})   # itemsの中には、分類されたItemインスタンスが格納されます。
+    return stock
+
+item.py:
+from ownable import set_owner
+
+class Item:
+    instances = []
+
+    def __init__(self, name, price, owner=None):
+        self.name = name
+        self.price = price
+        self.quantity = 0  # Inicializa la cantidad en 0
+        set_owner(self, owner)
+        Item.instances.append(self)
+
+    def label(self):
+        return {"name": self.name, "price": self.price}
+
+    @staticmethod
+    def item_all():
+        return Item.instances
+
+ownable.py:
+def set_owner(item, owner):
+    item.owner = owner
+
+user.py:
+from wallet import Wallet
+
+class User:
+    def __init__(self, name):
+        self.name = name
+        self.wallet = Wallet(self)
+
+    def pick_items(self, number, quantity):
+        # Implementación para seleccionar items
+        pass
+
+    def show_items(self):
+        # Implementación para mostrar los items del usuario
+        pass
+
+wallet.py:
+class Wallet:
+    def __init__(self, owner):
+        self.owner = owner
+        self.balance = 0
+
+    def deposit(self, amount):
+        self.balance += int(amount)
+
+    def withdraw(self, amount):
+        if not self.balance >= amount:
+            return
+        self.balance -= int(amount)
+        return amount
+
